@@ -1,5 +1,5 @@
 /* আমার হিসাব — সার্ভিস ওয়ার্কার (সম্পূর্ণ অফলাইন চালানোর জন্য) */
-const CACHE = 'amar-hishab-v2';
+const CACHE = 'amar-hishab-v3';
 const ASSETS = [
   './',
   './index.html',

@@ -341,3 +341,85 @@ textarea#sh-text {
 }
 .cf-msg { font-size: 14.5px; margin: 6px 0 4px; line-height: 1.7; }
 .card-head .avatar.big { border: 2px solid var(--green-l); }
+
+/* ---------- v1.2.0 সংযোজন ---------- */
+#calc-ok {
+  display: block; width: 100%; margin-top: 7px;
+  border: 0; border-radius: 10px; padding: 13px 0;
+  font-size: 16px; font-weight: 700; font-family: inherit;
+  background: var(--green); color: #fff; cursor: pointer;
+}
+#calc-ok:active { background: #22c55e; }
+.calc-fn { background: #4b5563; font-size: 15px; }
+.calc-c { background: #b91c1c; }
+.calc-op { background: #334155; color: var(--yellow); }
+.calc-eq { background: var(--teal); }
+
+.calc-field.calc-focus {
+  border-color: var(--yellow) !important;
+  background: #fefce8;
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, .45);
+}
+
+.rc-canvas {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: #fff;
+}
+.stmt-img {
+  display: block; width: 100%; height: auto; max-height: 52vh; object-fit: contain;
+  border: 1px solid var(--line); border-radius: 10px; background: #fff; margin: 6px 0 4px;
+}
+
+/* ---------- ডার্ক মোড ---------- */
+html[data-theme="dark"] {
+  --bg: #0f172a;
+  --card: #1e293b;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --line: #334155;
+}
+html[data-theme="dark"] body { background: var(--bg); }
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea { background: #0f172a; color: var(--text); border-color: var(--line); }
+html[data-theme="dark"] input:focus, html[data-theme="dark"] select:focus { border-color: #4ade80; }
+html[data-theme="dark"] input[type="date"] { color-scheme: dark; }
+html[data-theme="dark"] .modal-card { background: var(--card); }
+html[data-theme="dark"] .bottom-nav { background: #1e293b; }
+html[data-theme="dark"] .quick { background: var(--card); }
+html[data-theme="dark"] .tab { background: #0f172a; }
+html[data-theme="dark"] .seg { background: #0f172a; }
+html[data-theme="dark"] .seg-btn.on { background: #334155; color: var(--text); }
+html[data-theme="dark"] .totals { background: #0f172a; }
+html[data-theme="dark"] .profit-hint { background: #052e16; color: #86efac; }
+html[data-theme="dark"] .mini { background: #334155; }
+html[data-theme="dark"] .mini.edit { background: #1e3a5f; color: #93c5fd; }
+html[data-theme="dark"] .mini.del { background: #7f1d1d; }
+html[data-theme="dark"] .cart-row button.del { background: #7f1d1d; color: #fca5a5; }
+html[data-theme="dark"] .stat { background: #0f172a; }
+html[data-theme="dark"] .stat.green { background: #14351f; border-color: #155e36; }
+html[data-theme="dark"] .stat.green b, html[data-theme="dark"] .stat.green .stat-l { color: #86efac; }
+html[data-theme="dark"] .stat.red { background: #3b1212; border-color: #7f1d1d; }
+html[data-theme="dark"] .stat.red b, html[data-theme="dark"] .stat.red .stat-l { color: #fca5a5; }
+html[data-theme="dark"] .stat.blue { background: #122a4d; border-color: #1e40af; }
+html[data-theme="dark"] .stat.blue b, html[data-theme="dark"] .stat.blue .stat-l { color: #93c5fd; }
+html[data-theme="dark"] .stat.amber { background: #3d2c07; border-color: #92400e; }
+html[data-theme="dark"] .stat.amber b, html[data-theme="dark"] .stat.amber .stat-l { color: #fcd34d; }
+html[data-theme="dark"] .stat.teal { background: #0b3330; border-color: #115e59; }
+html[data-theme="dark"] .stat.teal b, html[data-theme="dark"] .stat.teal .stat-l { color: #5eead4; }
+html[data-theme="dark"] .btn.cancel { background: #7f1d1d; color: #fecaca; }
+html[data-theme="dark"] .btn.blue { background: #1e3a5f; color: #93c5fd; }
+html[data-theme="dark"] .btn.amber { background: #3d2c07; color: #fcd34d; }
+html[data-theme="dark"] .row-ic { background: #0f172a; }
+html[data-theme="dark"] .sel-chip { background: #14351f; border-color: #155e36; }
+html[data-theme="dark"] .sel-chip button { background: #0f172a; }
+html[data-theme="dark"] #global-search { background: #0f172a; }
+html[data-theme="dark"] #search-results.open { background: var(--card); }
+html[data-theme="dark"] .s-res { border-color: #334155; }
+html[data-theme="dark"] textarea#sh-text { background: #0f172a; }
+html[data-theme="dark"] .share-btn { background: #334155; color: var(--text); }
+html[data-theme="dark"] .share-btn.wa { background: #14351f; color: #86efac; }
+html[data-theme="dark"] .share-btn.ms { background: #122a4d; color: #93c5fd; }
+html[data-theme="dark"] .share-btn.sms { background: #3d2c07; color: #fcd34d; }
+html[data-theme="dark"] .calc-field.calc-focus { background: #3a3512; }

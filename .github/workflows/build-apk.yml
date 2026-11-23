@@ -72,6 +72,6 @@ jobs:
       - name: GitHub Release-এ APK যোগ
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.0
-          name: আমার হিসাব v1.1.0
+          tag_name: v1.2.0
+          name: আমার হিসাব v1.2.0
           files: amar-hishab.apk

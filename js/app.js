@@ -105,6 +105,7 @@ const App = (() => {
     if (opts.editProductId) editing.productId = opts.editProductId;
     if (opts.editCustomerId) editing.customerId = opts.editCustomerId;
     if (opts.customerId) editing.openCustomerId = opts.customerId;
+    if (opts.saleId) editing.openSaleId = opts.saleId;
     const h = '#/' + route;
     if (location.hash === h) route();
     else location.hash = h;
@@ -128,6 +129,8 @@ const App = (() => {
         customerForm: renderCustomerForm,
         customer: renderCustomerDetail,
         entries: renderEntries,
+        alltx: renderAllTx,
+        receipt: renderReceipt,
         settings: renderSettings
       }[name] || renderHome)(v);
     } catch (err) {
@@ -138,11 +141,12 @@ const App = (() => {
 
   function setActiveNav(name) {
     const map = {
-      home: 'home', sale: 'sales', products: 'products', productForm: 'products',
+      home: 'home', products: 'products', productForm: 'products',
       customers: 'customers', customerForm: 'customers', customer: 'customers',
       entries: 'entries', purchase: 'entries'
     };
-    $$('#bottom-nav button').forEach(b => b.classList.toggle('active', b.dataset.route === (map[name] || 'home')));
+    const cur = map[name] || '';
+    $$('#bottom-nav button').forEach(b => b.classList.toggle('active', b.dataset.route === cur));
   }
 
   function renderHome(v) {
@@ -201,40 +205,64 @@ const App = (() => {
       </div>
 
       <div class="card">
-        <div class="card-head"><h3>সাম্প্রতিক লেনদেন</h3><button class="link-btn" data-go="entries">সব দেখুন</button></div>
-        <div class="list">${recentList()}</div>
+        <div class="card-head"><h3>সর্বশেষ ২০টি লেনদেন</h3><button class="link-btn" data-go="alltx">সব দেখুন (৩ মাস)</button></div>
+        <div class="list" id="home-tx"></div>
       </div>`;
 
     bindGlobalSearch(v);
+    const tx20 = txItems().slice(0, 20);
+    $('#home-tx', v).innerHTML = txRows(tx20);
+    bindTxRows(v, tx20);
     $('#share-day', v).onclick = shareDay;
     $$('[data-go]', v).forEach(b => b.onclick = () => go(b.dataset.go));
   }
 
-  function recentList() {
+  function monthsAgoStr(n) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - n);
+    const pad = v => String(v).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  function txItems() {
     const items = [];
-    sales.slice(0, 8).forEach(s => items.push({
-      d: s.date, icon: '🛒', title: 'বিক্রয় — ' + (s.customerName || 'নগদ'),
-      sub: s.items.map(i => i.name + ' ×' + toBn(fmtNum(i.qty))).join(', '),
-      amt: s.total, cls: 'green', edit: () => go('sale', { editSaleId: s.id })
+    sales.forEach(s => items.push({
+      d: s.date, at: s.createdAt, icon: '🛒',
+      title: 'বিক্রয় — ' + (s.customerName || 'নগদ'),
+      sub: (s.items || []).map(i => i.name + ' ×' + toBn(fmtNum(i.qty))).join(', '),
+      amt: s.total, cls: 'green',
+      act: () => go('sale', { editSaleId: s.id })
     }));
-    purchases.slice(0, 5).forEach(p => items.push({
-      d: p.date, icon: '📥', title: 'ক্রয় — ' + p.name,
+    purchases.forEach(p => items.push({
+      d: p.date, at: p.createdAt, icon: '📥',
+      title: 'ক্রয় — ' + p.name,
       sub: toBn(fmtNum(p.qty)) + ' ' + (p.unit || '') + ' × ' + fmtMoney(p.price),
-      amt: p.total, cls: 'blue', edit: () => go('purchase', { editPurchaseId: p.id })
+      amt: p.total, cls: 'blue',
+      act: () => go('purchase', { editPurchaseId: p.id })
     }));
-    entries.slice(0, 5).forEach(e => items.push({
-      d: e.date, icon: e.type === 'income' ? '➕' : '➖', title: (e.type === 'income' ? 'আয়' : 'ব্যয়') + (e.category ? ' — ' + e.category : ''),
+    entries.forEach(e => items.push({
+      d: e.date, at: e.createdAt, icon: e.type === 'income' ? '➕' : '➖',
+      title: (e.type === 'income' ? 'আয়' : 'ব্যয়') + (e.category ? ' — ' + e.category : ''),
       sub: e.note || '', amt: e.amount, cls: e.type === 'income' ? 'teal' : 'red',
-      edit: () => go('entries', { editEntryId: e.id })
+      act: () => go('entries', { editEntryId: e.id })
     }));
-    payments.slice(0, 5).forEach(p => items.push({
-      d: p.date, icon: '💵', title: (p.amount >= 0 ? 'বাকি পরিশোধ' : 'বাকি যোগ') + ' — ' + ((customerById(p.customerId) || {}).name || ''),
-      sub: p.note || '', amt: Math.abs(p.amount), cls: p.amount >= 0 ? 'green' : 'red', edit: null
-    }));
-    items.sort((a, b) => b.d.localeCompare(a.d));
+    payments.forEach(p => {
+      const c = customerById(p.customerId);
+      items.push({
+        d: p.date, at: p.createdAt, icon: '💵',
+        title: (p.amount >= 0 ? 'বাকি পরিশোধ' : 'বাকি যোগ') + ' — ' + ((c || {}).name || ''),
+        sub: p.note || '', amt: Math.abs(p.amount), cls: p.amount >= 0 ? 'green' : 'red',
+        act: c ? () => { go('customer', { customerId: c.id }); setTimeout(() => openDueForm(c, p.amount >= 0 ? 1 : -1, p), 60); } : null
+      });
+    });
+    items.sort((a, b) => (b.d + (b.at || 0)).localeCompare(a.d + (a.at || 0)));
+    return items;
+  }
+
+  function txRows(items) {
     if (!items.length) return '<div class="empty">কোনো লেনদেন নেই</div>';
-    return items.slice(0, 12).map(it => `
-      <div class="row">
+    return items.map((it, i) => `
+      <div class="row" data-tx="${i}">
         <span class="row-ic">${it.icon}</span>
         <div class="row-main">
           <div class="row-t">${esc(it.title)}</div>
@@ -242,6 +270,29 @@ const App = (() => {
         </div>
         <div class="row-amt ${it.cls}">${fmtMoney(it.amt)}</div>
       </div>`).join('');
+  }
+
+  function bindTxRows(root, items) {
+    $$('[data-tx]', root).forEach(el => el.onclick = () => {
+      const it = items[+el.dataset.tx];
+      if (it && it.act) it.act();
+    });
+  }
+
+  function renderAllTx(v) {
+    const from = monthsAgoStr(3);
+    const items = txItems().filter(it => it.d >= from);
+    v.innerHTML = `
+      <button class="back" id="at-back">← হোম</button>
+      <div class="card">
+        <div class="card-head"><h3>সর্বশেষ ৩ মাসের লেনদেন</h3><button class="link-btn" data-go="entries">সব হিসাব</button></div>
+        <div class="mini-note">${dateBn(from)} থেকে এখন পর্যন্ত — মোট ${toBn(items.length)}টি লেনদেন</div>
+        <div class="list" id="alltx-list"></div>
+      </div>`;
+    $('#alltx-list', v).innerHTML = txRows(items);
+    bindTxRows(v, items);
+    $('#at-back').onclick = () => go('home');
+    $$('[data-go]', v).forEach(b => b.onclick = () => go(b.dataset.go));
   }
 
   function bindGlobalSearch(v) {
@@ -435,8 +486,9 @@ const App = (() => {
     await DB.put('sales', sale);
     await refreshData();
     toast(old ? 'বিক্রয় সংশোধন হয়েছে ✓' : 'বিক্রয় সংরক্ষিত ✓');
-    if (old && customerId) go('customer', { customerId });
-    else go('home');
+    if (!old) return go('receipt', { saleId: sale.id });
+    if (customerId) go('customer', { customerId });
+    else go('entries');
   }
 
   function deleteSale(id) {
@@ -778,6 +830,7 @@ const App = (() => {
           <button class="btn save sm" id="c-pay">💵 বাকি পরিশোধ</button>
           <button class="btn amber sm" id="c-due-add">➕ বাকি যোগ</button>
           <button class="btn blue sm" id="c-share">↗ হিসাব শেয়ার</button>
+          <button class="btn cancel sm" id="c-stmt">🖨 প্রিন্ট/স্টেটমেন্ট</button>
         </div>
       </div>
       <div class="card"><div class="card-head"><h3>লেনদেনের বিবরণ</h3></div><div class="list" id="c-ledger"></div></div>`;
@@ -796,6 +849,7 @@ const App = (() => {
     $('#c-pay').onclick = () => openDueForm(c, 1);
     $('#c-due-add').onclick = () => openDueForm(c, -1);
     $('#c-share').onclick = () => shareCustomer(c);
+    $('#c-stmt').onclick = () => makeStatementCanvas(statementCfg(c), cv => openStatementModal(cv, 'কাস্টমার স্টেটমেন্ট', statementTextOf(c)));
 
     const ledger = []
       .concat(cSales.map(s => ({ d: s.date, createdAt: s.createdAt, t: 'sale', s })))
@@ -965,9 +1019,18 @@ const App = (() => {
           <div class="row-s">${dateBn(e.date)}</div>
         </div>
         <div class="row-amt ${e.type === 'income' ? 'green' : 'red'}">${fmtMoney(e.amount)}</div>
-        <div class="row-actions"><button class="mini edit" data-ed="${e.id}">✎</button></div>
+        <div class="row-actions"><button class="mini edit" data-ed="${e.id}">✎</button><button class="mini del" data-ddel="${e.id}">🗑</button></div>
       </div>`).join('') : '<div class="empty">কোনো এন্ট্রি নেই</div>';
     $$('[data-ed]', $('#e-list')).forEach(b => b.onclick = () => go('entries', { editEntryId: b.dataset.ed }));
+    $$('[data-ddel]', $('#e-list')).forEach(b => b.onclick = () => {
+      confirmBox('এই এন্ট্রিটি ডিলিট করতে চান?').then(async ok => {
+        if (!ok) return;
+        await DB.del('entries', b.dataset.ddel);
+        await refreshData();
+        toast('ডিলিট হয়েছে');
+        renderLedgerTab(v);
+      });
+    });
   }
 
   function renderSalesTab(v) {
@@ -1078,7 +1141,7 @@ const App = (() => {
     $('#sh-close', wrap).onclick = close;
   }
 
-  function shareCustomer(c) {
+  function statementTextOf(c) {
     const due = dueOf(c.id);
     const cSales = sales.filter(s => s.customerId === c.id);
     const cPays = payments.filter(p => p.customerId === c.id);
@@ -1095,7 +1158,11 @@ const App = (() => {
     });
     if (!ledger.length) text += '(কোনো লেনদেন নেই)\n';
     text += `\n${due > 0 ? 'মোট বাকির পরিমাণ: ' + fmtMoney(due) : due < 0 ? 'অগ্রিম: ' + fmtMoney(-due) : 'সব পরিশোধিত ✓'}\n— ${Shop.name}${Shop.mobile ? ' (' + Shop.mobile + ')' : ''}`;
-    shareText(text);
+    return text;
+  }
+
+  function shareCustomer(c) {
+    shareText(statementTextOf(c));
   }
 
   function shareDay() {
@@ -1144,6 +1211,13 @@ const App = (() => {
         <input type="file" id="st-file" accept=".json" style="display:none">
       </div>
       <div class="card">
+        <h3>থিম (ব্রাইট / ডার্ক)</h3>
+        <div class="seg" id="theme-seg">
+          <button type="button" class="seg-btn ${currentTheme() === 'dark' ? '' : 'on'}" data-theme-btn="light">☀️ ব্রাইট</button>
+          <button type="button" class="seg-btn ${currentTheme() === 'dark' ? 'on' : ''}" data-theme-btn="dark">🌙 ডার্ক</button>
+        </div>
+      </div>
+      <div class="card">
         <h3>অ্যাপ ইনস্টল</h3>
         <p class="row-s">এই অ্যাপটি সম্পূর্ণ অফলাইনে চলে। ফোনে স্থায়ীভাবে ইনস্টল করতে ব্রাউজার মেনু থেকে "অ্যাপ ইনস্টল / Add to Home Screen" নির্বাচন করুন।</p>
         ${deferredPrompt ? '<button class="btn save" id="st-install">📲 এখনই ইনস্টল করুন</button>' : ''}
@@ -1153,9 +1227,13 @@ const App = (() => {
         <p class="row-s">সতর্কতা: সকল পণ্য, কাস্টমার ও হিসাব স্থায়ীভাবে মুছে যাবে। আগে ব্যাকআপ নিন।</p>
         <button class="btn cancel" id="st-clear">সব ডেটা মুছুন</button>
       </div>
-      <div class="card"><p class="row-s">সংস্করণ ১.০.০ · সম্পূর্ণ অফলাইন অ্যাপ · স্টোরেজ: ${DB.usingFallback ? 'লোকাল স্টোরেজ' : 'IndexedDB'}</p></div>`;
+      <div class="card"><p class="row-s">সংস্করণ ১.২.০ · সম্পূর্ণ অফলাইন অ্যাপ · স্টোরেজ: ${DB.usingFallback ? 'লোকাল স্টোরেজ' : 'IndexedDB'}</p></div>`;
 
     $('#st-back').onclick = () => go('home');
+    $$('[data-theme-btn]', v).forEach(b => b.onclick = () => {
+      applyTheme(b.dataset.themeBtn);
+      renderSettings(v);
+    });
     $('#st-save').onclick = () => {
       Shop.name = $('#st-name').value.trim() || 'আমার হিসাব';
       Shop.mobile = $('#st-mobile').value.trim();
@@ -1229,6 +1307,15 @@ const App = (() => {
     };
   }
 
+  /* ---------- থিম (ডার্ক/ব্রাইট) ---------- */
+  function currentTheme() {
+    try { return localStorage.getItem('amar-hishab-theme') || 'light'; } catch (e) { return 'light'; }
+  }
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem('amar-hishab-theme', theme); } catch (e) {}
+  }
+
   /* ---------- সার্ভিস ওয়ার্কার / ইনস্টল ---------- */
   function registerSW() {
     window.addEventListener('beforeinstallprompt', e => {
@@ -1242,6 +1329,7 @@ const App = (() => {
 
   /* ---------- শুরু ---------- */
   async function boot() {
+    applyTheme(currentTheme());
     registerSW();
     $('#btn-settings').onclick = () => go('settings');
     $$('#bottom-nav button').forEach(b => b.onclick = () => go(b.dataset.route));
@@ -1250,6 +1338,292 @@ const App = (() => {
     renderHeader();
     await refreshData();
     route();
+  }
+
+  /* ---------- রশিদ ও স্টেটমেন্ট (ছবি) ---------- */
+  function fitText(x2, s, w) {
+    s = String(s);
+    if (x2.measureText(s).width <= w) return s;
+    while (s.length && x2.measureText(s + '…').width > w) s = s.slice(0, -1);
+    return s + '…';
+  }
+
+  function loadShopLogo() {
+    return new Promise(res => {
+      if (!Shop.logo) return res(null);
+      const img = new Image();
+      const t = setTimeout(() => res(null), 1500);
+      img.onload = () => { clearTimeout(t); res(img); };
+      img.onerror = () => { clearTimeout(t); res(null); };
+      img.src = Shop.logo;
+    });
+  }
+
+  function makeStatementCanvas(cfg, cb) {
+    loadShopLogo().then(logo => {
+      const W = 780, P = 40;
+      const meta = cfg.meta || [];
+      const H = 205 + meta.length * 24 + 38 + cfg.rows.length * 40 + 16 + cfg.totals.length * 34 + 110;
+      const cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      const x = cv.getContext('2d');
+
+      x.fillStyle = '#ffffff';
+      x.fillRect(0, 0, W, H);
+      x.fillStyle = '#15803d';
+      x.fillRect(0, 0, W, 108);
+
+      let centerX = W / 2;
+      if (logo) {
+        x.save();
+        x.beginPath();
+        x.arc(P + 30, 54, 29, 0, Math.PI * 2);
+        x.clip();
+        const ls = Math.min(58 / logo.width, 58 / logo.height);
+        x.drawImage(logo, P + 30 - logo.width * ls / 2, 54 - logo.height * ls / 2, logo.width * ls, logo.height * ls);
+        x.restore();
+        centerX = (P + 64) / 2 + W / 2;
+      }
+      x.fillStyle = '#ffffff';
+      x.font = 'bold 30px "Noto Sans Bengali", sans-serif';
+      x.textAlign = 'center';
+      x.fillText(fitText(x, Shop.name || 'আমার হিসাব', W - 160), centerX, 62);
+
+      if (cfg.title) {
+        x.fillStyle = '#15803d';
+        x.font = 'bold 22px "Noto Sans Bengali", sans-serif';
+        x.fillText(cfg.title, W / 2, 148);
+      }
+      x.fillStyle = '#6b7280';
+      x.font = '15px "Noto Sans Bengali", sans-serif';
+      x.fillText(dateBn(cfg.date || todayStr()), W / 2, 176);
+
+      let y = 205;
+      const BN = '"Noto Sans Bengali", sans-serif';
+      meta.forEach(m => {
+        x.fillStyle = '#374151';
+        x.font = '15px ' + BN;
+        x.textAlign = 'left';
+        x.fillText(fitText(x, m.k + ': ' + m.v, W - P * 2), P, y);
+        y += 24;
+      });
+
+      y += 6;
+      x.fillStyle = '#f3f4f6';
+      x.fillRect(P, y - 18, W - P * 2, 30);
+      x.fillStyle = '#15803d';
+      x.font = 'bold 15px ' + BN;
+      cfg.cols.forEach(col => {
+        x.textAlign = col.align || 'left';
+        x.fillText(col.label, col.x, y);
+      });
+      y += 30;
+
+      x.font = '15px ' + BN;
+      cfg.rows.forEach((r, i) => {
+        if (i % 2 === 0) {
+          x.fillStyle = '#fafafa';
+          x.fillRect(P, y - 16, W - P * 2, 30);
+        }
+        x.fillStyle = '#111827';
+        r.c.forEach((cell, ci) => {
+          const col = cfg.cols[ci];
+          x.textAlign = col.align || 'left';
+          x.fillText(fitText(x, cell, col.w || 200), col.x, y);
+        });
+        y += 40;
+      });
+
+      y += 12;
+      x.textAlign = 'right';
+      cfg.totals.forEach(tl => {
+        x.font = (tl.bold ? 'bold 17px ' : '15px ') + BN;
+        x.fillStyle = tl.color || '#111827';
+        x.fillText(tl.label, W - P - 180, y);
+        x.fillText(fitText(x, tl.value, 170), W - P, y);
+        y += 34;
+      });
+
+      y += 14;
+      x.textAlign = 'center';
+      x.fillStyle = '#15803d';
+      x.font = 'bold 17px ' + BN;
+      x.fillText('ধন্যবাদ! আবার আসবেন', W / 2, Math.min(y + 24, H - 56));
+      x.fillStyle = '#9ca3af';
+      x.font = '13px ' + BN;
+      x.fillText('— আমার হিসাব অ্যাপ দিয়ে তৈরি —', W / 2, Math.min(y + 50, H - 32));
+      if (Shop.mobile) x.fillText('☎ ' + Shop.mobile, W / 2, Math.min(y + 72, H - 12));
+
+      cb(cv);
+    });
+  }
+
+  function receiptCfg(s, c) {
+    const rows = (s.items || []).map(i => ({
+      c: [i.name, toBn(fmtNum(i.qty)) + ' ' + (i.unit || ''), fmtMoney(i.price), fmtMoney(i.qty * i.price)]
+    }));
+    return {
+      title: 'বিক্রয় রশিদ',
+      date: s.date,
+      meta: [
+        { k: 'রশিদ নং', v: toBn(s.id.slice(-6).toUpperCase()) },
+        { k: 'কাস্টমার', v: c ? c.name + (c.mobile ? ' — ' + c.mobile : '') : 'নগদ কাস্টমার' }
+      ].concat(s.note ? [{ k: 'নোট', v: s.note }] : []),
+      cols: [
+        { label: 'পন্য', x: 40, align: 'left', w: 380 },
+        { label: 'পরিমাণ', x: 440, align: 'left', w: 110 },
+        { label: 'দাম', x: 570, align: 'left', w: 90 },
+        { label: 'মোট', x: 740, align: 'right', w: 40 }
+      ],
+      rows,
+      totals: [
+        { label: 'মোট বিল', value: fmtMoney(s.total) },
+        { label: 'নগদ পরিশোধ', value: fmtMoney(s.paid) },
+        { label: 'বাকি', value: fmtMoney(s.due), bold: true, color: '#dc2626' }
+      ]
+    };
+  }
+
+  function statementCfg(c) {
+    const due = dueOf(c.id);
+    const cSales = sales.filter(s => s.customerId === c.id);
+    const cPays = payments.filter(p => p.customerId === c.id);
+    const ledger = []
+      .concat(cSales.map(s => ({ d: s.date, createdAt: s.createdAt, t: 'sale', s })))
+      .concat(cPays.map(p => ({ d: p.date, createdAt: p.createdAt, t: 'pay', p })))
+      .sort((a, b) => (a.d + a.createdAt).localeCompare(b.d + b.createdAt));
+    const rows = ledger.map(l => {
+      const desc = l.t === 'sale'
+        ? 'বিক্রয়' + (l.s.note ? ' — ' + l.s.note : '')
+        : (l.p.amount >= 0 ? 'বাকি পরিশোধ' : 'বাকি যোগ') + (l.p.note ? ' — ' + l.p.note : '');
+      const amt = l.t === 'sale' ? l.s.total : Math.abs(l.p.amount);
+      return { c: [dateBn(l.d), desc, fmtMoney(amt)] };
+    });
+    if (!rows.length) rows.push({ c: ['—', '(কোনো লেনদেন নেই)', '—'] });
+    return {
+      title: 'কাস্টমার স্টেটমেন্ট',
+      date: todayStr(),
+      meta: [
+        { k: 'কাস্টমার', v: c.name + (c.mobile ? ' — ' + c.mobile : '') },
+        { k: 'ঠিকানা', v: c.address || '—' }
+      ],
+      cols: [
+        { label: 'তারিখ', x: 40, align: 'left', w: 150 },
+        { label: 'বিবরণ', x: 210, align: 'left', w: 380 },
+        { label: 'মোট', x: 740, align: 'right', w: 100 }
+      ],
+      rows,
+      totals: [
+        { label: 'মোট বিক্রয়', value: fmtMoney(cSales.reduce((a, s) => a + s.total, 0)) },
+        { label: 'মোট পরিশোধ', value: fmtMoney(cSales.reduce((a, s) => a + s.paid, 0) + cPays.filter(p => p.amount > 0).reduce((a, p) => a + p.amount, 0)) },
+        { label: 'বকেয়া', value: fmtMoney(due), bold: true, color: due > 0 ? '#dc2626' : '#15803d' }
+      ]
+    };
+  }
+
+  function receiptTextOf(s) {
+    let text = '*বিক্রয় রশিদ*\nতারিখ: ' + dateBn(s.date) + '\nরশিদ নং: ' + toBn(s.id.slice(-6).toUpperCase()) + '\n';
+    text += 'কাস্টমার: ' + (s.customerName || 'নগদ') + '\n\n';
+    (s.items || []).forEach(i => {
+      text += '• ' + i.name + ' ×' + toBn(fmtNum(i.qty)) + ' = ' + fmtMoney(i.qty * i.price) + '\n';
+    });
+    text += '\nমোট বিল: ' + fmtMoney(s.total) + '\nনগদ পরিশোধ: ' + fmtMoney(s.paid) + '\nবাকি: ' + fmtMoney(s.due) + '\n\n— ' + Shop.name;
+    return text;
+  }
+
+  function downloadCanvas(cv, name) {
+    try {
+      const a = document.createElement('a');
+      a.href = cv.toDataURL('image/png');
+      a.download = name;
+      a.click();
+      toast('ছবি সেভ হয়েছে ✓');
+    } catch (e) { toast('সেভ করা যায়নি', false); }
+  }
+
+  function shareCanvas(cv, title, fallbackText) {
+    try {
+      if (cv.toBlob && navigator.canShare) {
+        cv.toBlob(blob => {
+          if (blob) {
+            const file = new File([blob], title + '.png', { type: 'image/png' });
+            if (navigator.canShare({ files: [file] })) {
+              navigator.share({ files: [file], title }).then(() => {}, () => {});
+              return;
+            }
+          }
+          shareText(fallbackText || '');
+        }, 'image/png');
+        return;
+      }
+    } catch (e) {}
+    shareText(fallbackText || '');
+  }
+
+  function printCanvas(cv, name) {
+    try {
+      const w = window.open('', '_blank');
+      if (!w) throw new Error('popup');
+      w.document.write('<html><head><title>' + name + '</title></head><body style="margin:0;text-align:center"><img src="' + cv.toDataURL('image/png') + '" style="max-width:100%" onload="window.print()"></body></html>');
+      w.document.close();
+    } catch (e) {
+      downloadCanvas(cv, name + '.png');
+      toast('প্রিন্ট পেজ খোলা যায়নি — ছবি সেভ করা হয়েছে', false);
+    }
+  }
+
+  function openStatementModal(cv, title, fallbackText) {
+    const url = cv.toDataURL('image/png');
+    const wrap = document.createElement('div');
+    wrap.className = 'modal';
+    wrap.innerHTML = `
+      <div class="modal-card">
+        <h3>${esc(title)}</h3>
+        <img src="${url}" class="stmt-img">
+        <div class="btn-row wrap">
+          <button class="btn cancel sm" id="sm-close">বন্ধ</button>
+          <button class="btn amber sm" id="sm-save">📥 সেভ</button>
+          <button class="btn cancel sm" id="sm-print">🖨 প্রিন্ট</button>
+          <button class="btn blue sm" id="sm-share">↗ শেয়ার</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    $('#sm-close', wrap).onclick = () => wrap.remove();
+    $('#sm-save', wrap).onclick = () => downloadCanvas(cv, title + '-' + todayStr() + '.png');
+    $('#sm-print', wrap).onclick = () => printCanvas(cv, title + '-' + todayStr());
+    $('#sm-share', wrap).onclick = () => shareCanvas(cv, title, fallbackText || '');
+  }
+
+  function renderReceipt(v) {
+    const s = sales.find(x => x.id === editing.openSaleId);
+    if (!s) { v.innerHTML = '<div class="card"><p>রশিদ পাওয়া যায়নি</p><button class="btn save" id="rr-home">হোম</button></div>'; $('#rr-home', v).onclick = () => go('home'); return; }
+    const c = s.customerId ? customerById(s.customerId) : null;
+    v.innerHTML = `
+      <button class="back" id="rc-back">← হোম</button>
+      <div class="card">
+        <div class="card-head"><h3>বিক্রয় রশিদ</h3><button class="link-btn" data-go="home">🏠 হোম</button></div>
+        <canvas id="rc-img" class="rc-canvas"></canvas>
+        <div class="btn-row wrap">
+          <button class="btn blue sm" id="rc-share">↗ শেয়ার</button>
+          <button class="btn amber sm" id="rc-save">📥 ফোনে সেভ</button>
+          <button class="btn cancel sm" id="rc-print">🖨 প্রিন্ট</button>
+        </div>
+      </div>`;
+
+    const rc = $('#rc-img', v);
+    let rcv = null;
+    makeStatementCanvas(receiptCfg(s, c), cv => {
+      rcv = cv;
+      rc.width = cv.width;
+      rc.height = cv.height;
+      rc.getContext('2d').drawImage(cv, 0, 0);
+    });
+
+    $('#rc-back').onclick = () => go('home');
+    $$('[data-go]', v).forEach(b => b.onclick = () => go(b.dataset.go));
+    $('#rc-share').onclick = () => shareCanvas(rcv || rc, 'বিক্রয় রশিদ', receiptTextOf(s));
+    $('#rc-save').onclick = () => downloadCanvas(rcv || rc, 'rashid-' + todayStr() + '.png');
+    $('#rc-print').onclick = () => printCanvas(rcv || rc, 'rashid-' + todayStr());
   }
 
   return { boot };
