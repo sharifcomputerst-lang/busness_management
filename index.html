@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#15803d">
+<meta name="description" content="সম্পূর্ণ অফলাইন ব্যবসা ম্যানেজমেন্ট অ্যাপ — আয়-ব্যয়, ক্রয়-বিক্রয়, স্টক, বাকির হিসাব">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>আমার হিসাব — অফলাইন ব্যবসা ম্যানেজমেন্ট</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-left">
+    <div class="app-logo">হি</div>
+    <div>
+      <div class="app-title">আমার হিসাব</div>
+      <div class="app-sub" id="header-date"></div>
+    </div>
+  </div>
+  <button class="icon-btn" id="btn-settings" title="সেটিংস">⚙</button>
+</header>
+
+<main id="view"></main>
+
+<nav class="bottom-nav" id="bottom-nav">
+  <button data-route="home" class="active"><span class="nav-ic">🏠</span>হোম</button>
+  <button data-route="sales"><span class="nav-ic">🛒</span>বিক্রয়</button>
+  <button data-route="products"><span class="nav-ic">📦</span>পণ্য</button>
+  <button data-route="customers"><span class="nav-ic">👥</span>কাস্টমার</button>
+  <button data-route="entries"><span class="nav-ic">📒</span>হিসাব</button>
+</nav>
+
+<div id="toast" class="toast"></div>
+
+<script src="js/util.js"></script>
+<script src="js/db.js"></script>
+<script src="js/calc.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
