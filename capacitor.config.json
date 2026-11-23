@@ -1,0 +1,11 @@
+{
+  "appId": "com.sharifcomputers.amarhishab",
+  "appName": "আমার হিসাব",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#15803d"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

@@ -1,0 +1,77 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'capacitor.config.json'
+      - '.github/workflows/build-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: ওয়েব অ্যাপ ফাইল কপি
+        run: |
+          mkdir -p www
+          cp index.html manifest.webmanifest sw.js package.json capacitor.config.json www/
+          cp -r css js icons www/
+
+      - name: ডিপেন্ডেন্সি ইনস্টল
+        run: npm install --no-audit --no-fund
+
+      - name: Capacitor Android প্ল্যাটফর্ম তৈরি
+        run: |
+          npx cap add android
+          npx cap copy android
+          npx cap sync android
+
+      - name: অ্যাপ নাম ও আইকন বসানো
+        run: |
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            if [ -d "android/app/src/main/res/mipmap-$d" ]; then
+              cp icons/icon-192.png "android/app/src/main/res/mipmap-$d/ic_launcher.png"
+              cp icons/icon-192.png "android/app/src/main/res/mipmap-$d/ic_launcher_round.png"
+            fi
+          done
+          cp icons/icon-512.png android/app/src/main/res/drawable/splash.png 2>/dev/null || true
+
+      - name: APK বিল্ড
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: APK রেডি করা
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk amar-hishab.apk
+          ls -la amar-hishab.apk
+
+      - name: আর্টিফ্যাক্ট আপলোড (Actions)
+        uses: actions/upload-artifact@v4
+        with:
+          name: amar-hishab-apk
+          path: amar-hishab.apk
+
+      - name: GitHub Release-এ APK যোগ
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: আমার হিসাব v1.0.0
+          files: amar-hishab.apk

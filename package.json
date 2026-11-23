@@ -1,0 +1,11 @@
+{
+  "name": "amar-hishab",
+  "version": "1.0.0",
+  "private": true,
+  "description": "আমার হিসাব — অফলাইন ব্যবসা ম্যানেজমেন্ট অ্যাপ",
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  }
+}
