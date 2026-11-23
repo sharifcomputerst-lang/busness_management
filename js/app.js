@@ -36,6 +36,66 @@ const App = (() => {
     return salesDueOf(cid) - paymentsSumOf(cid);
   }
 
+  /* ---------- কাস্টম কনফার্ম ডায়ালগ (WebView-safe) ---------- */
+  function confirmBox(msg) {
+    return new Promise(resolve => {
+      const wrap = document.createElement('div');
+      wrap.className = 'modal';
+      wrap.innerHTML = `
+        <div class="modal-card">
+          <p class="cf-msg">${esc(msg)}</p>
+          <div class="btn-row">
+            <button class="btn cancel" id="cf-no">না</button>
+            <button class="btn save" id="cf-yes">হ্যাঁ</button>
+          </div>
+        </div>`;
+      document.body.appendChild(wrap);
+      const done = ok => { wrap.remove(); resolve(ok); };
+      $('#cf-no', wrap).onclick = () => done(false);
+      $('#cf-yes', wrap).onclick = () => done(true);
+    });
+  }
+
+  /* ---------- ছবি আপলোড (রিসাইজসহ) ---------- */
+  function pickImage(cb) {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'image/*';
+    inp.onchange = () => {
+      const f = inp.files[0];
+      if (!f) return;
+      const r = new FileReader();
+      r.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const cv = document.createElement('canvas');
+          const size = 320;
+          const scale = Math.min(size / img.width, size / img.height, 1);
+          cv.width = Math.max(1, Math.round(img.width * scale));
+          cv.height = Math.max(1, Math.round(img.height * scale));
+          cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+          cb(cv.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = () => toast('ছবিটি খোলা যায়নি', false);
+        img.src = r.result;
+      };
+      r.readAsDataURL(f);
+    };
+    inp.click();
+  }
+
+  /* ---------- হেডারে দোকানের নাম ও ছবি ---------- */
+  function renderHeader() {
+    const name = Shop.name || 'আমার হিসাব';
+    const t = $('.app-title');
+    if (t) t.textContent = name;
+    document.title = name + ' — অফলাইন ব্যবসা ম্যানেজমেন্ট';
+    const lg = $('.app-logo');
+    if (lg) lg.innerHTML = Shop.logo ? '<img src="' + Shop.logo + '" alt="">' : 'হি';
+    const hd = $('#header-date');
+    if (hd) hd.textContent = dateBn(todayStr());
+  }
+
   function go(route, opts) {
     opts = opts || {};
     editing = {};
@@ -45,7 +105,9 @@ const App = (() => {
     if (opts.editProductId) editing.productId = opts.editProductId;
     if (opts.editCustomerId) editing.customerId = opts.editCustomerId;
     if (opts.customerId) editing.openCustomerId = opts.customerId;
-    location.hash = '#/' + route;
+    const h = '#/' + route;
+    if (location.hash === h) route();
+    else location.hash = h;
   }
 
   window.addEventListener('hashchange', () => route());
@@ -233,7 +295,10 @@ const App = (() => {
         <div class="card-head"><h3>${s ? 'বিক্রয় সংশোধন' : 'নতুন বিক্রয়'}</h3>
           <button class="link-btn" data-go2="1">বিক্রয় তালিকা</button></div>
 
-        <label class="f-l">মোট কেনাকাটা</label>
+        <label class="f-l">তারিখ</label>
+        <input id="s-date" type="date" value="${s ? s.date : todayStr()}">
+
+        <label class="f-l">কাস্টমার</label>
         <select id="s-customer">
           <option value="">নগদ কাস্টমার (বাকি নয়)</option>
           ${customers.map(c => {
@@ -349,7 +414,7 @@ const App = (() => {
     const sale = {
       id: old ? old.id : uid(),
       createdAt: old ? old.createdAt : Date.now(),
-      date: old ? old.date : todayStr(),
+      date: $('#s-date').value || (old ? old.date : todayStr()),
       customerId, customerName,
       items: JSON.parse(JSON.stringify(cart)),
       total: t.total, paid: t.paid, due: Math.max(0, t.due),
@@ -374,18 +439,20 @@ const App = (() => {
     else go('home');
   }
 
-  async function deleteSale(id) {
+  function deleteSale(id) {
     const s = sales.find(x => x.id === id);
     if (!s) return;
-    if (!confirm('এই বিক্রয়টি ডিলিট করতে চান? স্টক ও বাকির হিসাব ফিরিয়ে আনা হবে।')) return;
-    for (const it of s.items) {
-      const p = productById(it.productId);
-      if (p) { p.stock = (p.stock || 0) + it.qty; await DB.put('products', p); }
-    }
-    await DB.del('sales', id);
-    await refreshData();
-    toast('বিক্রয় ডিলিট হয়েছে');
-    route();
+    confirmBox('এই বিক্রয়টি ডিলিট করতে চান? স্টক ও বাকির হিসাব ফিরিয়ে আনা হবে।').then(async ok => {
+      if (!ok) return;
+      for (const it of s.items) {
+        const p = productById(it.productId);
+        if (p) { p.stock = (p.stock || 0) + it.qty; await DB.put('products', p); }
+      }
+      await DB.del('sales', id);
+      await refreshData();
+      toast('বিক্রয় ডিলিট হয়েছে');
+      route();
+    });
   }
 
   /* ---------- ক্রয় ফর্ম ---------- */
@@ -397,6 +464,9 @@ const App = (() => {
       <div class="card">
         <div class="card-head"><h3>${p ? 'ক্রয় সংশোধন' : 'পণ্য ক্রয়'}</h3>
           <button class="link-btn" data-qpur>ক্রয় তালিকা</button></div>
+
+        <label class="f-l">তারিখ</label>
+        <input id="p-date" type="date" value="${p ? p.date : todayStr()}">
 
         <label class="f-l">পণ্য খুঁজুন বা নতুন পণ্যের নাম লিখুন</label>
         <input id="p-prod-search" placeholder="পণ্যের নাম লিখুন...">
@@ -483,7 +553,7 @@ const App = (() => {
       await DB.put('purchases', {
         id: p ? p.id : uid(),
         createdAt: p ? p.createdAt : Date.now(),
-        date: p ? p.date : todayStr(),
+        date: $('#p-date').value || (p ? p.date : todayStr()),
         productId: prod2.id, name: prod2.name, unit: prod2.unit,
         qty, price, total: Math.round(qty * price * 100) / 100,
         note: $('#p-note').value.trim()
@@ -498,16 +568,18 @@ const App = (() => {
     update();
   }
 
-  async function deletePurchase(id) {
+  function deletePurchase(id) {
     const p = purchases.find(x => x.id === id);
     if (!p) return;
-    if (!confirm('এই ক্রয়টি ডিলিট করতে চান? স্টক থেকে পরিমাণ বাদ দেওয়া হবে।')) return;
-    const prod = productById(p.productId);
-    if (prod) { prod.stock = (prod.stock || 0) - p.qty; await DB.put('products', prod); }
-    await DB.del('purchases', id);
-    await refreshData();
-    toast('ক্রয় ডিলিট হয়েছে');
-    route();
+    confirmBox('এই ক্রয়টি ডিলিট করতে চান? স্টক থেকে পরিমাণ বাদ দেওয়া হবে।').then(async ok => {
+      if (!ok) return;
+      const prod = productById(p.productId);
+      if (prod) { prod.stock = (prod.stock || 0) - p.qty; await DB.put('products', prod); }
+      await DB.del('purchases', id);
+      await refreshData();
+      toast('ক্রয় ডিলিট হয়েছে');
+      route();
+    });
   }
   /* ---------- পণ্য তালিকা ও ফর্ম ---------- */
   function renderProducts(v) {
@@ -531,14 +603,16 @@ const App = (() => {
           </div>
         </div>`).join('') : '<div class="empty">কোনো পণ্য নেই — নতুন পণ্য যোগ করুন</div>';
       $$('[data-ed]', $('#pr-list')).forEach(b => b.onclick = () => go('productForm', { editProductId: b.dataset.ed }));
-      $$('[data-dl]', $('#pr-list')).forEach(b => b.onclick = async () => {
+      $$('[data-dl]', $('#pr-list')).forEach(b => b.onclick = () => {
         const p = productById(b.dataset.dl);
         if (!p) return;
-        if (!confirm('"' + p.name + '" পণ্যটি ডিলিট করতে চান?')) return;
-        await DB.del('products', p.id);
-        await refreshData();
-        toast('পণ্য ডিলিট হয়েছে');
-        renderProducts(v);
+        confirmBox('"' + p.name + '" পণ্যটি ডিলিট করতে চান?').then(async ok => {
+          if (!ok) return;
+          await DB.del('products', p.id);
+          await refreshData();
+          toast('পণ্য ডিলিট হয়েছে');
+          renderProducts(v);
+        });
       });
     };
     $('#pr-search').oninput = renderList;
@@ -627,9 +701,17 @@ const App = (() => {
 
   function renderCustomerForm(v) {
     const c = editing.customerId ? customerById(editing.customerId) : null;
+    let photo = (c && c.photo) || '';
     v.innerHTML = `
       <div class="card">
         <h3>${c ? 'কাস্টমার সংশোধন' : 'নতুন কাস্টমার'}</h3>
+        <div class="avatar-row">
+          <div class="avatar big" id="c-photo-box">${photo ? '<img src="' + photo + '">' : '👤'}</div>
+          <div class="avatar-actions">
+            <button class="btn blue sm" id="c-photo-btn" type="button">কাস্টমারের ছবি যোগ</button>
+            <button class="btn cancel sm" id="c-photo-rm" type="button" style="display:${photo ? '' : 'none'}">মুছুন</button>
+          </div>
+        </div>
         <label class="f-l">নাম *</label>
         <input id="c-name" value="${c ? esc(c.name) : ''}" placeholder="কাস্টমারের নাম">
         <label class="f-l">মোবাইল</label>
@@ -642,12 +724,22 @@ const App = (() => {
         </div>
       </div>`;
     $('#c-cancel').onclick = () => go('customers');
+    $('#c-photo-btn').onclick = () => pickImage(u => {
+      photo = u;
+      $('#c-photo-box').innerHTML = '<img src="' + u + '">';
+      $('#c-photo-rm').style.display = '';
+    });
+    $('#c-photo-rm').onclick = () => {
+      photo = '';
+      $('#c-photo-box').innerHTML = '👤';
+      $('#c-photo-rm').style.display = 'none';
+    };
     $('#c-save').onclick = async () => {
       const name = $('#c-name').value.trim();
       if (!name) return toast('কাস্টমারের নাম দিন', false);
       await DB.put('customers', {
         id: c ? c.id : uid(), createdAt: c ? c.createdAt : Date.now(),
-        name, mobile: $('#c-mobile').value.trim(), address: $('#c-addr').value.trim()
+        name, mobile: $('#c-mobile').value.trim(), address: $('#c-addr').value.trim(), photo
       });
       await refreshData();
       toast(c ? 'কাস্টমার সংশোধন হয়েছে ✓' : 'কাস্টমার যোগ হয়েছে ✓');
@@ -668,6 +760,7 @@ const App = (() => {
       <button class="back" id="c-back">← কাস্টমার তালিকা</button>
       <div class="card">
         <div class="card-head">
+          <div class="avatar big">${c.photo ? `<img src="${c.photo}" alt="">` : esc((c.name || '?').slice(0, 1))}</div>
           <div>
             <h3>${esc(c.name)}</h3>
             <div class="row-s">${esc(c.mobile || '')}${c.address ? ' · ' + esc(c.address) : ''}</div>
@@ -691,12 +784,14 @@ const App = (() => {
 
     $('#c-back').onclick = () => go('customers');
     $('#c-edit').onclick = () => go('customerForm', { editCustomerId: c.id });
-    $('#c-del').onclick = async () => {
-      if (!confirm('কাস্টমার ডিলিট করতে চান?')) return;
-      await DB.del('customers', c.id);
-      await refreshData();
-      toast('কাস্টমার ডিলিট হয়েছে');
-      go('customers');
+    $('#c-del').onclick = () => {
+      confirmBox('কাস্টমার ডিলিট করতে চান?').then(async ok => {
+        if (!ok) return;
+        await DB.del('customers', c.id);
+        await refreshData();
+        toast('কাস্টমার ডিলিট হয়েছে');
+        go('customers');
+      });
     };
     $('#c-pay').onclick = () => openDueForm(c, 1);
     $('#c-due-add').onclick = () => openDueForm(c, -1);
@@ -727,48 +822,73 @@ const App = (() => {
           <div class="row-s">${dateBn(l.d)}</div>
         </div>
         <div class="row-amt ${l.p.amount >= 0 ? 'green' : 'red'}">${fmtMoney(Math.abs(l.p.amount))}</div>
-        <div class="row-actions"><button class="mini del" data-dp="${l.p.id}">🗑</button></div>
+        <div class="row-actions"><button class="mini edit" data-epay="${l.p.id}">✎</button><button class="mini del" data-dp="${l.p.id}">🗑</button></div>
       </div>`).join('') : '<div class="empty">কোনো লেনদেন নেই</div>';
 
     $$('[data-es]', v).forEach(b => b.onclick = () => go('sale', { editSaleId: b.dataset.es }));
     $$('[data-ds]', v).forEach(b => b.onclick = () => deleteSale(b.dataset.ds));
-    $$('[data-dp]', v).forEach(b => b.onclick = async () => {
-      if (!confirm('এই লেনদেন ডিলিট করতে চান?')) return;
-      await DB.del('payments', b.dataset.dp);
-      await refreshData();
-      toast('ডিলিট হয়েছে');
-      route();
+    $$('[data-epay]', v).forEach(b => b.onclick = () => {
+      const p = cPays.find(x => x.id === b.dataset.epay);
+      if (p) openDueForm(c, p.amount >= 0 ? 1 : -1, p);
+    });
+    $$('[data-dp]', v).forEach(b => b.onclick = () => {
+      confirmBox('এই লেনদেন ডিলিট করতে চান?').then(async ok => {
+        if (!ok) return;
+        await DB.del('payments', b.dataset.dp);
+        await refreshData();
+        toast('ডিলিট হয়েছে');
+        route();
+      });
     });
   }
 
-  function openDueForm(c, sign) {
+  function openDueForm(c, sign, existing) {
     const wrap = document.createElement('div');
     wrap.className = 'modal';
+    const amt = existing ? Math.abs(existing.amount) : 0;
     wrap.innerHTML = `
       <div class="modal-card">
         <h3>${sign > 0 ? 'বাকি পরিশোধ' : 'বাকি যোগ'} — ${esc(c.name)}</h3>
+        <label class="f-l">তারিখ</label>
+        <input id="d-date" type="date" value="${existing ? existing.date : todayStr()}">
         <label class="f-l">পরিমাণ</label>
-        <input id="d-amount" class="calc-field" placeholder="৳০">
+        <input id="d-amount" class="calc-field" value="${amt ? fmtNum(amt) : ''}" placeholder="৳০">
         <label class="f-l">নোট</label>
-        <input id="d-note" placeholder="ঐচ্ছিক">
+        <input id="d-note" value="${existing ? esc(existing.note || '') : ''}" placeholder="ঐচ্ছিক">
         <div class="btn-row">
           <button class="btn cancel" id="d-cancel">বাতিল</button>
-          <button class="btn save" id="d-save">সংরক্ষণ</button>
+          <button class="btn save" id="d-save">${existing ? 'সংশোধন সংরক্ষণ' : 'সংরক্ষণ'}</button>
         </div>
       </div>`;
     document.body.appendChild(wrap);
     $('#d-cancel', wrap).onclick = () => wrap.remove();
     $('#d-save', wrap).onclick = async () => {
-      const amt = Math.abs(Number($('#d-amount', wrap).value) || 0);
-      if (!amt) return toast('পরিমাণ দিন', false);
-      await DB.put('payments', {
-        id: uid(), createdAt: Date.now(), date: todayStr(),
-        customerId: c.id, amount: sign * amt, note: $('#d-note', wrap).value.trim()
-      });
-      await refreshData();
-      wrap.remove();
-      toast('সংরক্ষিত ✓');
-      route();
+      const save = async value => {
+        await DB.put('payments', {
+          id: existing ? existing.id : uid(),
+          createdAt: existing ? existing.createdAt : Date.now(),
+          date: $('#d-date', wrap).value || todayStr(),
+          customerId: c.id, amount: sign * value, note: $('#d-note', wrap).value.trim()
+        });
+        await refreshData();
+        wrap.remove();
+        toast(existing ? 'সংশোধন হয়েছে ✓' : 'সংরক্ষিত ✓');
+        route();
+      };
+      const v0 = Math.abs(Number($('#d-amount', wrap).value) || 0);
+      if (!v0) return toast('পরিমাণ দিন', false);
+      if (existing && v0 !== Math.abs(existing.amount)) {
+        const dt = $('#d-date', wrap).value;
+        await DB.put('payments', {
+          id: uid(), createdAt: Date.now(), date: dt || todayStr(),
+          customerId: c.id, amount: -existing.amount,
+          note: 'সংশোধন — আগের ' + fmtMoney(Math.abs(existing.amount)) + ' বাতিল'
+        });
+      }
+      if (sign > 0 && v0 > salesDueOf(c.id) - paymentsSumOf(c.id)) {
+        toast('বাকির চেয়ে বেশি পরিশোধ — অতিরিক্তটি অগ্রিম হিসেবে থাকবে');
+      }
+      save(v0);
     };
   }
   /* ---------- হিসাব ট্যাব ---------- */
@@ -827,12 +947,14 @@ const App = (() => {
       toast('সংরক্ষিত ✓');
       go('entries');
     };
-    if (ed) $('#e-del').onclick = async () => {
-      if (!confirm('এই এন্ট্রি ডিলিট করতে চান?')) return;
-      await DB.del('entries', ed.id);
-      await refreshData();
-      toast('ডিলিট হয়েছে');
-      go('entries');
+    if (ed) $('#e-del').onclick = () => {
+      confirmBox('এই এন্ট্রি ডিলিট করতে চান?').then(async ok => {
+        if (!ok) return;
+        await DB.del('entries', ed.id);
+        await refreshData();
+        toast('ডিলিট হয়েছে');
+        go('entries');
+      });
     };
 
     $('#e-list').innerHTML = entries.length ? entries.map(e => `
@@ -892,7 +1014,7 @@ const App = (() => {
   }
 
   /* ---------- শেয়ার ---------- */
-  const Shop = { name: 'আমার হিসাব', mobile: '' };
+  const Shop = { name: 'আমার হিসাব', mobile: '', logo: '' };
   async function loadShop() {
     try {
       const s = JSON.parse(localStorage.getItem('amar-hishab-shop') || 'null');
@@ -900,21 +1022,60 @@ const App = (() => {
     } catch (e) {}
   }
 
-  async function shareText(text) {
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: 'আমার হিসাব', text });
-        return;
-      } catch (e) {
-        if (e && e.name === 'AbortError') return;
+  function shareText(text) {
+    const wrap = document.createElement('div');
+    wrap.className = 'modal';
+    wrap.innerHTML = `
+      <div class="modal-card">
+        <h3>হিসাব শেয়ার করুন</h3>
+        <textarea id="sh-text" rows="6" readonly></textarea>
+        <div class="share-grid">
+          <a class="share-btn wa" id="sh-wa"><span>💬</span>হোয়াটসঅ্যাপ</a>
+          <a class="share-btn ms" id="sh-msgr"><span>✉️</span>মেসেঞ্জার</a>
+          <a class="share-btn sms" id="sh-sms"><span>📩</span>মেসেজ (SMS)</a>
+          <a class="share-btn" id="sh-sys"><span>↗</span>অন্যান্য অ্যাপ</a>
+        </div>
+        <div class="btn-row">
+          <button class="btn cancel" id="sh-close">বন্ধ</button>
+          <button class="btn blue" id="sh-copy">📋 কপি</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    $('#sh-text', wrap).value = text;
+    const u = encodeURIComponent(text);
+    const close = () => wrap.remove();
+
+    $('#sh-wa', wrap).onclick = () => { close(); window.open('https://wa.me/?text=' + u, '_blank', 'noopener'); };
+
+    $('#sh-msgr', wrap).onclick = async () => {
+      try { await navigator.clipboard.writeText(text); toast('মেসেজ কপি হয়েছে — মেসেঞ্জারে পেস্ট করুন ✓'); } catch (e) {}
+      close();
+      try { window.open('fb-messenger://', '_blank'); } catch (e) { window.open('https://www.messenger.com/', '_blank', 'noopener'); }
+    };
+
+    $('#sh-sms', wrap).onclick = () => { close(); window.open('sms:?body=' + u, '_blank'); };
+
+    $('#sh-sys', wrap).onclick = async () => {
+      if (navigator.share) {
+        try { await navigator.share({ title: Shop.name || 'আমার হিসাব', text }); close(); return; } catch (e) { if (e && e.name === 'AbortError') return; }
       }
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-      toast('হিসাব কপি হয়েছে — যেকোনো অ্যাপে পেস্ট করুন ✓');
-    } catch (e) {
-      prompt('নিচের হিসাবটি কপি করুন:', text);
-    }
+      try { await navigator.clipboard.writeText(text); toast('কপি হয়েছে — যেকোনো অ্যাপে পেস্ট করুন ✓'); } catch (e) { toast('কপি করতে ব্যর্থ', false); }
+    };
+
+    $('#sh-copy', wrap).onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast('কপি হয়েছে ✓');
+      } catch (e) {
+        const ta = $('#sh-text', wrap);
+        ta.removeAttribute('readonly');
+        ta.focus();
+        ta.select();
+        try { document.execCommand('copy'); toast('কপি হয়েছে ✓'); } catch (e2) { toast('টেক্সট ম্যানুয়ালি কপি করুন', false); }
+      }
+    };
+
+    $('#sh-close', wrap).onclick = close;
   }
 
   function shareCustomer(c) {
@@ -960,6 +1121,13 @@ const App = (() => {
       <button class="back" id="st-back">← হোম</button>
       <div class="card">
         <h3>দোকানের তথ্য (শেয়ারের জন্য)</h3>
+        <div class="avatar-row">
+          <div class="avatar big" id="st-logo-box">${Shop.logo ? '<img src="' + Shop.logo + '">' : '🏪'}</div>
+          <div class="avatar-actions">
+            <button class="btn blue sm" id="st-logo-btn" type="button">দোকানের ছবি/লোগো যোগ</button>
+            <button class="btn cancel sm" id="st-logo-rm" type="button" style="display:${Shop.logo ? '' : 'none'}">মুছুন</button>
+          </div>
+        </div>
         <label class="f-l">দোকানের নাম</label>
         <input id="st-name" value="${esc(Shop.name)}">
         <label class="f-l">মোবাইল</label>
@@ -992,7 +1160,21 @@ const App = (() => {
       Shop.name = $('#st-name').value.trim() || 'আমার হিসাব';
       Shop.mobile = $('#st-mobile').value.trim();
       try { localStorage.setItem('amar-hishab-shop', JSON.stringify(Shop)); } catch (e) {}
+      renderHeader();
       toast('সংরক্ষিত ✓');
+    };
+
+    $('#st-logo-btn').onclick = () => pickImage(u => {
+      Shop.logo = u;
+      try { localStorage.setItem('amar-hishab-shop', JSON.stringify(Shop)); } catch (e) {}
+      renderHeader();
+      renderSettings(v);
+    });
+    $('#st-logo-rm').onclick = () => {
+      Shop.logo = '';
+      try { localStorage.setItem('amar-hishab-shop', JSON.stringify(Shop)); } catch (e) {}
+      renderHeader();
+      renderSettings(v);
     };
 
     $('#st-export').onclick = async () => {
@@ -1011,17 +1193,20 @@ const App = (() => {
       const f = e.target.files[0];
       if (!f) return;
       const r = new FileReader();
-      r.onload = async () => {
-        if (!confirm('ব্যাকআপ রিস্টোর করলে বর্তমান ডেটা প্রতিস্থাপিত হবে। চালিয়ে যাবেন?')) return;
-        try {
-          const data = JSON.parse(r.result);
-          if (data.shop) Object.assign(Shop, data.shop);
-          try { localStorage.setItem('amar-hishab-shop', JSON.stringify(Shop)); } catch (e2) {}
-          await DB.import(data);
-          await refreshData();
-          toast('ব্যাকআপ রিস্টোর সম্পন্ন ✓');
-          go('home');
-        } catch (err) { toast('ব্যাকআপ ফাইল পড়া যায়নি', false); }
+      r.onload = () => {
+        confirmBox('ব্যাকআপ রিস্টোর করলে বর্তমান ডেটা প্রতিস্থাপিত হবে। চালিয়ে যাবেন?').then(async ok => {
+          if (!ok) return;
+          try {
+            const data = JSON.parse(r.result);
+            if (data.shop) Object.assign(Shop, data.shop);
+            try { localStorage.setItem('amar-hishab-shop', JSON.stringify(Shop)); } catch (e2) {}
+            await DB.import(data);
+            renderHeader();
+            await refreshData();
+            toast('ব্যাকআপ রিস্টোর সম্পন্ন ✓');
+            go('home');
+          } catch (err) { toast('ব্যাকআপ ফাইল পড়া যায়নি', false); }
+        });
       };
       r.readAsText(f);
     };
@@ -1033,12 +1218,14 @@ const App = (() => {
       deferredPrompt = null;
     };
 
-    $('#st-clear').onclick = async () => {
-      if (!confirm('সত্যিই সব ডেটা মুছে ফেলতে চান?') || !confirm('নিশ্চিত? আগে ব্যাকআপ নিয়েছেন তো?')) return;
-      await DB.clearAll();
-      await refreshData();
-      toast('সব ডেটা মুছে ফেলা হয়েছে');
-      go('home');
+    $('#st-clear').onclick = () => {
+      confirmBox('সত্যিই সব ডেটা মুছে ফেলতে চান? (আগে ব্যাকআপ নিন)').then(async ok => {
+        if (!ok) return;
+        await DB.clearAll();
+        await refreshData();
+        toast('সব ডেটা মুছে ফেলা হয়েছে');
+        go('home');
+      });
     };
   }
 
@@ -1056,11 +1243,11 @@ const App = (() => {
   /* ---------- শুরু ---------- */
   async function boot() {
     registerSW();
-    $('#header-date').textContent = dateBn(todayStr());
     $('#btn-settings').onclick = () => go('settings');
     $$('#bottom-nav button').forEach(b => b.onclick = () => go(b.dataset.route));
     await DB.open();
     await loadShop();
+    renderHeader();
     await refreshData();
     route();
   }
